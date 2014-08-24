@@ -1,0 +1,144 @@
+#Human Activity Recognition - Predictive Modeling
+
+With the explosion of new exercise personal monitoring devices, a large amount of sensory data is now being collected. This information in turn can be utilized to predict both the type of activity as well as how well one does that activity to a high degree of accuracy. This analysis uses the Huamn Activity Recogition dataset provided by [Groupware@LES](http://http://groupware.les.inf.puc-rio.br/har) to build a prediction model to identify proper weight lifting techniques.
+
+##Environmental Setup and Data Download
+The environment is established by loading the ggplot and caret packages, the file urls are set, and, if not already in the current working directory, are downloaded and then loaded into R. Session variables for the download dates and session information are retained.
+
+*Important* : Before running any code, please be sure to set up to the intended working directory. Since the directory naming conventions differ across operating systems, the specific code is not included within this file. This step should be run beforehand.
+```{r Env Setup and Data Download, cache=TRUE}
+library(ggplot2) # For plotting
+library(caret)   # For prediction modelling
+
+setwd("...")
+
+train_df = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_df = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+if( !file.exists("traindf.csv") ) {
+    download.file( url = train_df, dest = "traindf.csv");
+    download.date.train <- date() }
+if( !file.exists("testdf.csv") ) {
+    download.file( url = test_df, dest = "testdf.csv");
+    download.date.test <- date()}
+
+traindf = read.csv("traindf.csv")
+testdf = read.csv("testdf.csv")
+
+download.session.info <- sessionInfo()
+```
+
+##Data Processing and Clean Up
+Data pre-processing and clean up entails two distinct step.
+
+1. Remove the first seven data fields which contain the record number, subject name, time-stamp information, and exercise window as none of these fields contain sensory data.
+2. Review the records with the missing data values, access their extent, and remove them if appropriate. Several fields have either NA or missing values in over 90% of the records and these will be removed. On item of note is that the records that do have valid values for these predictors all belong to classe A.
+```{r Data Processing and Clean Up, cache=TRUE}
+traindf.pp = traindf
+
+summary(traindf[,1:7])
+traindf = traindf[, -(1:7)]
+
+traindf.original.columns = dim(traindf)[2]
+traindf.original.rows = dim(traindf)[1]
+
+traindf.na.summary = 
+    matrix(data = NA, nrow = traindf.original.columns, ncol = 5
+           )
+
+for (counter in 1:traindf.original.columns) {
+    traindf.na.summary[counter,1] = counter
+    traindf.na.summary[counter,2] = sum(is.na(traindf[,counter]))
+    traindf.na.summary[counter,3] = 
+        as.logical( sum(is.na(traindf[,counter])) > .90 * traindf.original.rows)
+    traindf.na.summary[counter,4] = sum(traindf[,counter] == "")
+    traindf.na.summary[counter,5] =
+        as.logical( sum(traindf[,counter] == "") > .90 * traindf.original.rows)
+}
+
+table(traindf$classe[traindf.na.summary[,3]])
+table(traindf$classe[traindf.na.summary[,5]])
+traindf.pp1 = traindf
+
+# Remove the data columns which have NAs or missing values in greater than 90%
+# of records.
+traindf = traindf.pp1[,!(traindf.na.summary[,3]) & !(traindf.na.summary[,5])]
+```
+##Data Partitioning between the Training and Validation Sets
+
+At this point, the training data set is randomly broken out into a training set which will be utilized for the model building and a validation set which will be utilized to predict the out of sample error rate. Half of the records are placed in the training set and half are placed in the validation set.
+```{r Data Partitioning, cache=TRUE}
+
+dIndex = createDataPartition( y=traindf$classe, p=0.50, list=FALSE )
+trainingdf = traindf[dIndex,]
+validationdf = traindf[-dIndex,]
+```
+
+##Model Building - Random Forest
+Since the classe variable is categorical, the model selection process initally focuses on a tree method with random forest being the first type select as it has a high accuracy rate although interpretability will be impaired. As is common with many categorical outcomes, the accuracy parameter will be used to establish a measure of comparision between the different models.
+
+Cross validation for random forest models is utilized to select the number of randomly selected predictors selected at each node of the tree (often, this is generally the square root of the number of predictors which, in this case, is around seven given that dataset now has 52 predictor variables). In the caret package, this value is represented by the mtry variable.
+
+```{r Model Fitting RF, cache=TRUE}
+
+set.seed(1235)
+
+modFinal = train( classe ~ ., data = trainingdf, method = "rf", trcontrol = trainControl( method = "cv", number = 4, allowParallel = TRUE, verboseIter = TRUE ) )
+
+modFinal$finalModel
+print(modFinal, digits = 3)
+
+```
+Through the cross-validation calcuations, the final model has an mtry value of `r modFinal$results[2,1]` with an accuracy level of `r modFinal$results[2,2]`.
+
+##Out of Sample Error Rate
+The estimate for the out of sample error rate is calculated using the validation data set.
+```{r Out of Sample Error Rate, cache = TRUE}
+
+# Predict the outcomes for the validation cases
+valid.predict = predict(modFinal, validationdf)
+
+# Calculate the Confusion Matrix comparing the predicted
+# values with real values in the validation cases
+
+cf.valid = confusionMatrix( valid.predict, validationdf$classe)
+cf.valid
+```
+
+Given that the accuracy for this model is `r cf.valid$overall[1]`, the out of sample error rate is `r (1 - cf.valid$overall[1])`.
+
+##Model Building - Boosting
+For comparision purposes, the boosting modelling technique was also considered with an out of sample error estimate calculated for comparision purposes.
+```{r Model Building Boosting, cache = TRUE }
+
+modBoost = train(classe ~. , method = "gbm", data = trainingdf, 
+                 verbose = FALSE )
+                 
+bm.valid = confusionMatrix( predict(modBoost, validationdf), 
+                            validationdf$classe)
+bm.valid
+```
+
+Since the accuracy estimate for this technique is only `r bm.valid$overall[1]` (as compared to `r modFinal$results[2,2]`), the final model used is the random forest-based model. 
+
+##Prediction Values for the 20 Test Cases
+First, predicted values are calculated for the 20 test cases using the chosen Random Forest-based model and then, using code provided within the instructions, files are created with theses test cases which will later be uploaded to the Coursera website.
+
+``` {r Application to the 20 Test Cases}
+
+# Review the output of the 20 cases
+predict(modFinal,testdf)
+
+# Write this output to individual files
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predict(modFinal,testdf))
+
+```
+
