@@ -1,3 +1,6 @@
+---
+output: pdf_document
+---
 #Human Activity Recognition - Predictive Modeling
 
 With the explosion of new exercise personal monitoring devices, a large amount of sensory data is now being collected. This information in turn can be utilized to predict both the type of activity as well as how well one does that activity to a high degree of accuracy. This analysis uses the Huamn Activity Recogition dataset provided by [Groupware@LES](http://http://groupware.les.inf.puc-rio.br/har) to build a prediction model to identify proper weight lifting techniques.
@@ -127,7 +130,8 @@ First, predicted values are calculated for the 20 test cases using the chosen Ra
 ``` {r Application to the 20 Test Cases}
 
 # Review the output of the 20 cases
-predict(modFinal,testdf)
+# predict(modFinal,testdf)
+# Note: Output removed so future students will not inadvertently come across it.
 
 # Write this output to individual files
 pml_write_files = function(x){
